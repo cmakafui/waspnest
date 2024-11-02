@@ -1,5 +1,5 @@
 # examples/simple_hook.py
-from waspnest import State, Skill, Agent
+from waspnest import State, Skill, Agent, skill
 from waspnest.hooks import HookPoint
 from pydantic import BaseModel
 import instructor
@@ -21,7 +21,8 @@ class Response(BaseModel):
 
 
 # Skill definition
-class AnswerSkill(Skill[Query, Response]):
+class AnswerSkill(Skill):
+    @skill
     def execute(self, state: State[Query]) -> State[Response]:
         result = self.ask(
             prompt=state.data.text,

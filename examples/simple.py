@@ -1,6 +1,6 @@
-# Example Usage (examples/simple.py)
+# examples/simple.py
 from pydantic import BaseModel
-from waspnest import State, Skill, Agent
+from waspnest import State, Skill, Agent, skill
 import instructor
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -31,7 +31,8 @@ class Response(BaseModel):
 
 
 # Skills
-class QueryAnalyzer(Skill[Query, Analysis]):
+class QueryAnalyzer(Skill):
+    @skill
     def execute(self, state: State[Query]) -> State[Analysis]:
         # Analyze the query
         result = self.ask(
@@ -42,7 +43,8 @@ class QueryAnalyzer(Skill[Query, Analysis]):
         return State(result)
 
 
-class ResponseGenerator(Skill[Analysis, Response]):
+class ResponseGenerator(Skill):
+    @skill
     def execute(self, state: State[Analysis]) -> State[Response]:
         # Generate response using the analysis
         result = self.ask(

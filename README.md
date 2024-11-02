@@ -1,15 +1,16 @@
 # WaspNest Framework
 
-A type-safe, state-centric framework for building AI applications. WaspNest provides clean abstractions for building complex AI workflows while maintaining simplicity and type safety.
+A type-safe, state-centric framework for building AI applications that learn. WaspNest provides clean abstractions for building complex AI workflows while maintaining strict type safety and runtime validation.
 
 ## Features
 
-- 🔒 **Type-safe by design**: Full type checking for your AI workflows
-- 🧩 **State-centric architecture**: Clear data flow and transformations
-- 🛠 **Clean skill composition**: Build complex workflows from simple parts
-- 🤝 **First-class LLM integration**: Built on top of Instructor for structured outputs
-- 🔍 **Built-in monitoring**: Hook system for debugging and observability
-- 📦 **Zero magic**: Explicit, understandable, and debuggable
+- 🔒 **Enhanced Type Safety**: Full static and runtime type checking with the `@skill` decorator
+- 🧩 **State-Centric Architecture**: Clear data flow and transformations
+- 🛠 **Clean Skill Composition**: Build complex workflows from simple parts
+- 🤝 **First-Class LLM Integration**: Built on top of Instructor for structured outputs
+- 🔍 **Built-in Monitoring**: Comprehensive hook system for debugging and observability
+- 📦 **Zero Magic**: Explicit, understandable, and debuggable
+- 🎯 **Runtime Validation**: Automatic input/output validation with the skill decorator
 
 ## Installation
 
@@ -19,7 +20,7 @@ pip install waspnest
 
 Required dependencies:
 
-- Python 3.9+
+- Python 3.10+
 - Instructor
 - Pydantic v2
 
@@ -27,13 +28,11 @@ Required dependencies:
 
 ```python
 from pydantic import BaseModel
-from waspnest import State, Skill, Agent
-from waspnest.hooks import HookPoint
+from waspnest import State, Skill, Agent, skill
 import instructor
 from openai import OpenAI
-from datetime import datetime
 
-# 1. Define your states
+# 1. Define your states as Pydantic models
 class Query(BaseModel):
     text: str
 
@@ -41,29 +40,22 @@ class Response(BaseModel):
     answer: str
     confidence: float
 
-# 2. Define your skill
-class AnswerGenerator(Skill[Query, Response]):
+# 2. Define your skill with type-safe decorator
+class AnswerGenerator(Skill):
+    @skill  # New! Provides runtime type checking
     def execute(self, state: State[Query]) -> State[Response]:
         result = self.ask(
             prompt=state.data.text,
             response_model=Response,
             system_prompt="Generate a helpful response."
         )
-        return State(result, context=state.context)
+        return State(result)
 
-# 3. Add monitoring hooks (optional)
-def log_skill_execution(skill: Skill, state: State):
-    print(f"[{datetime.now()}] Executing {skill.name}")
-    print(f"Input: {state.data}")
-
-# 4. Create agent and run
+# 3. Create agent and run
 client = instructor.from_openai(OpenAI())
 agent = Agent([AnswerGenerator()], client=client)
 
-# Register hooks if needed
-agent.hooks.on(HookPoint.SKILL_START, log_skill_execution)
-
-response = agent.execute(
+response = await agent.execute(
     State(Query(text="How do I reset my password?"))
 )
 
@@ -73,7 +65,28 @@ print(f"Confidence: {response.data.confidence}")
 
 ## Core Concepts
 
-### States
+### Enhanced Type Safety with @skill Decorator
+
+The new `@skill` decorator provides automatic runtime type validation:
+
+```python
+class AnalyzeQuery(Skill):
+    @skill  # Validates input/output types at runtime
+    def execute(self, state: State[Query]) -> State[Analysis]:
+        # Will raise TypeError if input/output don't match declared types
+        result = self.ask(
+            prompt=state.data.text,
+            response_model=Analysis
+        )
+        return State(result)
+
+# The decorator ensures:
+# 1. Input state matches declared type
+# 2. Output state matches declared type
+# 3. Proper error messages for type mismatches
+```
+
+### States as Pydantic Models
 
 States are simple Pydantic models that represent data at each step:
 
@@ -83,14 +96,18 @@ class OrderState(BaseModel):
     items: List[Item]
     total: Decimal
     status: str
+
+# States are immutable and type-safe
+state = State(OrderState(...))
 ```
 
-### Skills
+### Type-Safe Skills
 
-Skills are type-safe transformers between states:
+Skills are transformers between states with guaranteed type safety:
 
 ```python
-class ProcessOrder(Skill[OrderState, ProcessedOrder]):
+class ProcessOrder(Skill):
+    @skill
     def execute(self, state: State[OrderState]) -> State[ProcessedOrder]:
         result = self.ask(
             prompt=str(state.data),
@@ -100,24 +117,19 @@ class ProcessOrder(Skill[OrderState, ProcessedOrder]):
         return State(result)
 ```
 
-### Hooks
+### Comprehensive Hook System
 
 Monitor and debug your workflow with hooks:
 
 ```python
-# Define hooks for monitoring
-def log_llm_request(**kwargs):
-    print(f"LLM Request: {kwargs['messages']}")
-
-def log_error(exception: Exception, skill: Skill, state: State):
-    print(f"Error in {skill.name}: {str(exception)}")
+def log_skill_execution(skill: Skill, state: State):
+    print(f"[{datetime.now()}] Executing {skill.name}")
+    print(f"Input: {state.data}")
 
 # Register hooks with agent
-agent.hooks.on(HookPoint.LLM_REQUEST, log_llm_request)
-agent.hooks.on(HookPoint.ERROR, log_error)
+agent.hooks.on(HookPoint.SKILL_START, log_skill_execution)
 
 Available hook points:
-
 * PRE_EXECUTE: Before execution starts
 * POST_EXECUTE: After execution completes
 * SKILL_START: Before each skill execution
@@ -126,29 +138,14 @@ Available hook points:
 * LLM_REQUEST: Before LLM calls
 ```
 
-### Agents
-
-Agents orchestrate skills and handle execution:
-
-```python
-agent = Agent(
-    skills=[
-        ValidateOrder(),
-        ProcessOrder(),
-        SendConfirmation()
-    ],
-    client=instructor.from_openai(OpenAI()),
-    model="gpt-4o-mini"
-)
-
-result = agent.execute(initial_state)
-```
-
 ## Complex Example
 
-Here's a more complex example showing a multi-step workflow:
+Here's a more complex example showing state transitions with type safety:
 
 ```python
+from pydantic import BaseModel
+from waspnest import State, Skill, Agent, skill
+
 # States
 class Query(BaseModel):
     text: str
@@ -157,46 +154,39 @@ class Query(BaseModel):
 class Analysis(BaseModel):
     intent: str
     sentiment: float
-    priority: int
     query: str  # Preserve original query
 
 class Response(BaseModel):
     message: str
     confidence: float
 
-# Skills
-class QueryAnalyzer(Skill[Query, Analysis]):
+# Skills with runtime type validation
+class QueryAnalyzer(Skill):
+    @skill
     def execute(self, state: State[Query]) -> State[Analysis]:
         result = self.ask(
             prompt=state.data.text,
-            response_model=Analysis,
-            system_prompt="Analyze query intent and sentiment.",
-            query=state.data.text
+            response_model=Analysis
         )
         return State(result)
 
-class ResponseGenerator(Skill[Analysis, Response]):
+class ResponseGenerator(Skill):
+    @skill
     def execute(self, state: State[Analysis]) -> State[Response]:
-        prompt = f"""
-        Query: {state.data.query}
-        Intent: {state.data.intent}
-        Priority: {state.data.priority}
-        Sentiment: {state.data.sentiment}
-        """
         result = self.ask(
-            prompt=prompt,
-            response_model=Response,
-            system_prompt="Generate an appropriate response."
+            prompt=f"""
+            Query: {state.data.query}
+            Intent: {state.data.intent}
+            Sentiment: {state.data.sentiment}
+            """,
+            response_model=Response
         )
         return State(result)
 
-# Usage
-agent = Agent(
-    skills=[QueryAnalyzer(), ResponseGenerator()],
-    client=instructor.from_openai(OpenAI())
-)
+# Usage with automatic type checking
+agent = Agent([QueryAnalyzer(), ResponseGenerator()], client=client)
 
-final_state = agent.execute(
+final_state = await agent.execute(
     State(Query(
         text="I've waited 3 days for my order!",
         user_id="123"
@@ -204,14 +194,26 @@ final_state = agent.execute(
 )
 ```
 
-## Type Safety
+## Type Safety Features
 
-WaspNest provides type safety at both compile time and runtime:
+WaspNest provides multiple layers of type safety:
 
-- Skills declare their input and output types
-- The agent ensures skills only receive compatible states
-- Type hints provide IDE support and catch errors early
-- Runtime checks prevent invalid state transitions
+1. **Static Type Checking**:
+
+   - Full type hints for IDE support
+   - Mypy compatibility
+   - Clear type errors during development
+
+2. **Runtime Validation** (New!):
+
+   - `@skill` decorator ensures type consistency
+   - Automatic validation of input/output states
+   - Clear error messages for type mismatches
+
+3. **State Immutability**:
+   - States are immutable by default
+   - Context updates create new states
+   - Prevents accidental state mutation
 
 ## Testing
 
@@ -227,7 +229,6 @@ def test_query_analyzer():
     mock_client.chat.completions.create.return_value = Analysis(
         intent="test",
         sentiment=0.5,
-        priority=1,
         query="Test query"
     )
 
@@ -241,10 +242,10 @@ def test_query_analyzer():
 ## Project Structure
 
 ```
-nexus/
+waspnest/
 ├── core/
 │   ├── state.py    # State management
-│   ├── skill.py    # Skill base class
+│   ├── skill.py    # Skill base class & decorator
 │   └── agent.py    # Agent implementation
 ├── hooks.py        # Hook system
 └── __init__.py
@@ -266,5 +267,6 @@ MIT License - See LICENSE file for details
 
 Built with ❤️ on top of:
 
-- [Instructor](https://github.com/jxnl/instructor)
+- [Instructor](https://github.com/instructor-ai/instructor)
 - [Pydantic](https://github.com/pydantic/pydantic)
+- [OpenAI](https://platform.openai.com/docs/api-reference)

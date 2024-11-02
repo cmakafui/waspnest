@@ -1,4 +1,4 @@
-# nexus/core/agent.py
+# waspnet/core/agent.py
 from datetime import datetime
 from .skill import Skill
 from .state import State
