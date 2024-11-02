@@ -18,5 +18,9 @@ class Hooks:
         self.hooks[point].append(callback)
 
     def trigger(self, point: HookPoint, **kwargs):
+        """Trigger all callbacks for a hook point"""
         for hook in self.hooks[point]:
-            hook(**kwargs)
+            try:
+                hook(**kwargs)
+            except Exception as e:
+                self.trigger(HookPoint.ERROR, exception=e, hook=hook)
